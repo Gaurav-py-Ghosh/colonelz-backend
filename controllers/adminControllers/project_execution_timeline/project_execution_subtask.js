@@ -110,7 +110,7 @@ export const updateProjectExecutionSubtask = async (req, res) => {
             detail_color
         } = req.body;
 
-        if (!org_id || !project_id || !task_id || !subtask_id || !subtask_name || !subtask_start_date || !subtask_end_date) {
+        if (!org_id || !project_id || !task_id || !subtask_id || !subtask_start_date || !subtask_end_date) {
             return responseData(res, "", 400, false, "All required fields must be provided", []);
         }
 
@@ -256,7 +256,7 @@ export const deleteProjectExecutionSubtask = async (req, res) => {
 
     } catch (err) {
         console.error("Error deleting subtask:", err);
-        return responseData(res, "", 500, false, "Internal server error", []);
+        return responseData(res, "", 500, false, "Internal server error ", []);
     }
 }
 
@@ -497,7 +497,7 @@ export const updateProjectExecutionSubtaskDetails = async (req, res) => {
         find_detail.subtask_details_start_date,
         find_detail.subtask_details_end_date
     )
-    : subtaskEndDateToUse,
+    : find_subtask.sub_task_end_date,
             }
         };
         const updateSubtask = await projectExecutionModel.updateOne(
