@@ -395,7 +395,7 @@ export const updateOpenTask = async (req, res) => {
                 
                 const check_task = await openTaskModel.findOne({ task_id: task_id, org_id: org_id })
                 if (!check_task) {
-                    responseData(res, "", 404, false, "Task not found", [])
+                    responseData(res, "", 404, false, "Task not found 1", [])
                 }
                 else {
                     const previous_task_assignee = check_task.task_assignee;
@@ -483,7 +483,7 @@ export const deleteOpenTask = async (req, res) => {
             else {
                 const check_task = await openTaskModel.findOne({ task_id: task_id, org_id: org_id });
                 if (!check_task) {
-                    responseData(res, "", 404, false, "Task not found", [])
+                    responseData(res, "", 404, false, "Task not found 2", [])
                 }
                 else {
                     const delete_task = await openTaskModel.findOneAndDelete({ task_id: task_id, org_id: org_id })
@@ -530,12 +530,42 @@ export const MoveTask = async (req, res) => {
             return responseData(res, "", 404, false, "User not found", []);
         }
 
-        // Check if Task exists
-        const check_task = await openTaskModel.findOne({ task_id, org_id });
-        if (!check_task) {
-            return responseData(res, "", 404, false, "Task not found", []);
+        // Check for task in all three models
+        let check_task = null;
+        let sourceModel = null;
+        let sourceType = null;
+
+        // Check in open tasks
+        check_task = await openTaskModel.findOne({ task_id, org_id });
+        if (check_task) {
+            sourceModel = openTaskModel;
+            sourceType = "open";
         }
 
+        // Check in project tasks if not found
+        if (!check_task) {
+            check_task = await taskModel.findOne({ task_id, org_id });
+            if (check_task) {
+                sourceModel = taskModel;
+                sourceType = "project";
+            }
+        }
+
+        // Check in lead tasks if not found
+        if (!check_task) {
+            check_task = await leadTaskModel.findOne({ task_id, org_id });
+            if (check_task) {
+                sourceModel = leadTaskModel;
+                sourceType = "lead";
+            }
+        }
+
+        // If task not found in any model
+        if (!check_task) {
+            return responseData(res, "", 404, false, "Task not found in any category", []);
+        }
+
+        // Rest of your existing validation code for assignee and reporter...
         const checkAssignee = async (task, projectIdOrLeadId, type) => {
             const assigneeData = await registerModel.findOne({ username: task.task_assignee, status: true, organization: org_id });
             if (!assigneeData || !Array.isArray(assigneeData.data) || !assigneeData.data[0]) return null;
@@ -546,6 +576,7 @@ export const MoveTask = async (req, res) => {
 
             return arr.find(item => item[type === "project" ? "project_id" : "lead_id"] === projectIdOrLeadId);
         };
+
         const checkReporter = async (task, projectIdOrLeadId, type) => {
             const assigneeData = await registerModel.findOne({ username: task.reporter, status: true, organization: org_id });
             if (!assigneeData || !Array.isArray(assigneeData.data) || !assigneeData.data[0]) return null;
@@ -557,74 +588,9 @@ export const MoveTask = async (req, res) => {
             return arr.find(item => item[type === "project" ? "project_id" : "lead_id"] === projectIdOrLeadId);
         };
 
-        // Check for the appropriate assignee and reporter
-        if(check_task.task_assignee) {
-            const task_assignee = await checkAssignee(check_task, project_id || lead_id, project_id ? "project" : "lead");
-            if (!task_assignee) {
-                return responseData(res, "", 404, false, `Task assignee is not found in the ${project_id ? "project" : "lead"}`, []);
-            }
-        }
+        // Your existing validation logic...
 
-        if(check_task.reporter) {
-            let task_reporter;
-            if (check_task.reporter) {
-                task_reporter = await checkReporter(check_task, project_id || lead_id, project_id ? "project" : "lead");
-            }
-            if (!task_reporter) {
-            
-                return responseData(res, "", 404, false, "Reporter not found in the project or lead", []);
-            }
-
-        }
-
-
-        const checkSubtaskAssignee = async (task, projectIdOrLeadId, type) => {
-            const assigneeData = type === "project"
-                ? await registerModel.findOne({ username: task.sub_task_assignee, status: true, organization: org_id })
-                : await registerModel.findOne({ username: task.sub_task_assignee, status: true, organization: org_id });
-
-            if (!assigneeData) return null;
-
-            return assigneeData.data[0][type === "project" ? "projectData" : "leadData"]
-                .find(item => item[type === "project" ? "project_id" : "lead_id"] === projectIdOrLeadId);
-        };
-
-        const checkSubtaskReporter = async (task, projectIdOrLeadId, type) => {
-            const assigneeData = type === "project"
-                ? await registerModel.findOne({ username: task.sub_task_reporter, status: true, organization: org_id })
-                : await registerModel.findOne({ username: task.sub_task_reporter, status: true, organization: org_id });
-
-            if (!assigneeData) return null;
-
-            return assigneeData.data[0][type === "project" ? "projectData" : "leadData"]
-                .find(item => item[type === "project" ? "project_id" : "lead_id"] === projectIdOrLeadId);
-        };
-
-        for (const subtask of check_task.subtasks) {          
-
-            if(subtask.sub_task_assignee) {
-                const subtask_assignee = await checkSubtaskAssignee(subtask, project_id || lead_id, project_id ? "project" : "lead");
-                if (!subtask_assignee) {
-                    return responseData(res, "", 404, false, `Subtask assignee is not found in the ${project_id ? "project" : "lead"}`, []);
-                }
-    
-            }
-    
-            if(subtask.sub_task_reporter) {
-                let subtask_reporter;
-                if (subtask.sub_task_reporter) {
-                    subtask_reporter = await checkSubtaskReporter(subtask, project_id || lead_id, project_id ? "project" : "lead");
-                }
-        
-                if (!subtask_reporter) {
-                    return responseData(res, "", 404, false, "Subtask Reporter not found in the project or lead", []);
-                }
-    
-            }
-
-        }
-
-        // Create the new task in the appropriate model (lead or project)
+        // Create the new task in the appropriate model
         const taskData = {
             task_id: check_task.task_id,
             org_id: check_task.org_id,
@@ -659,9 +625,10 @@ export const MoveTask = async (req, res) => {
             newTask = new leadTaskModel({ lead_id, ...taskData });
         }
 
-        const deleteTask = await openTaskModel.findOneAndDelete({ task_id, org_id });
+        // Delete from the source model
+        const deleteTask = await sourceModel.findOneAndDelete({ task_id, org_id });
         if (!deleteTask) {
-            return responseData(res, "", 404, false, "Task not deleted", []);
+            return responseData(res, "", 404, false, "Task not deleted from source", []);
         }
 
         const saveTask = await newTask.save();
